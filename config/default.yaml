@@ -1,0 +1,29 @@
+camera:
+  auto_connect_first: false
+  buffer_count: 24
+  frame_timeout_ms: 500
+  reconnect_enabled: true
+  reconnect_interval_seconds: 3
+  max_reconnect_attempts: 10
+  consecutive_failure_threshold: 5
+
+processing:
+  mode: cpu                  # "cpu" or "cuda"
+  analysis_width: 640
+  analysis_height: 480
+  difference_threshold: 5
+  gaussian_kernel: 21
+  morphology_kernel: 5
+  alert_threshold_percent: 20.0
+
+logging:
+  enabled: true
+  interval_seconds: 60
+  directory: "./data/coverage"
+
+monitoring:
+  interval_seconds: 1.5
+
+ui:
+  language: "zh"             # "zh" or "en"
+  show_difference_pip: true

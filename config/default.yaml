@@ -27,3 +27,8 @@ monitoring:
 ui:
   language: "zh"             # "zh" or "en"
   show_difference_pip: true
+
+  # ── Raspberry Pi / small-screen tuning ──────────────────────────
+  compact: "auto"            # "auto" (detect small screen) | true | false
+  display_fps_cap: 30        # cap UI repaint rate (fps); 0 = uncapped
+  card_shadows: "auto"       # "auto" (off in compact) | true | false

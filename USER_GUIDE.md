@@ -307,9 +307,32 @@ monitoring:
 ui:
   language: "zh"              # "zh" or "en" (runtime-switchable)
   show_difference_pip: true   # difference picture-in-picture overlay
+  compact: "auto"             # small-screen layout: "auto" | true | false
+  display_fps_cap: 30         # cap UI repaint rate (fps); 0 = uncapped
+  card_shadows: "auto"        # card drop shadows: "auto" | true | false
 ```
 
 Use a custom file with `./run.sh --config /path/to/file.yaml`.
+
+### Running on a Raspberry Pi
+
+On a small display (e.g. the official 7" 800×480 touchscreen) the window
+switches to a **compact layout** automatically — tighter margins, a smaller
+video minimum, and a window sized to fit the screen. You can force it either
+way with `ui.compact: true` / `false`.
+
+Two display-performance settings help the Pi's modest GPU/CPU:
+
+* `display_fps_cap` decouples the UI repaint from the acquisition rate. The
+  camera keeps streaming and coverage analysis still runs on every frame, but
+  the costly Qt render (resize + colour-convert + upload) never runs faster
+  than the cap. Lower it (e.g. `15`) on a Pi 3; raise or set `0` to uncap.
+* `card_shadows` turns off the per-card drop shadows (soft shadows are drawn
+  in software and are surprisingly expensive on the Pi's composited display).
+  `"auto"` disables them whenever the compact layout is active.
+
+The divider between the left panel and the video can be **dragged** to give
+either side more room.
 
 ---
 

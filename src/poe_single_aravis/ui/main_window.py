@@ -25,7 +25,7 @@ from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout,
     QComboBox, QPushButton, QLabel, QStackedWidget, QScrollArea, QDoubleSpinBox,
     QSpinBox, QSlider, QRadioButton, QButtonGroup, QProgressBar, QSizePolicy,
-    QSplitter,
+    QSplitter, QApplication,
 )
 
 from ..settings import Settings
@@ -37,6 +37,7 @@ from .i18n import tr, set_language, get_language
 from .theme import (
     C, app_stylesheet, btn_primary, btn_ghost, btn_success, btn_danger,
     btn_toggle, Card, hline, key_label, value_label, icon, label,
+    set_shadows_enabled,
 )
 from .video_widget import VideoWidget
 from .chart_widget import ChartWidget
@@ -74,8 +75,13 @@ class MainWindow(QMainWindow):
         self._last_display: Optional[np.ndarray] = None
         self._caps: Optional[CameraCapabilities] = None
 
+        # Decide compact (small-screen / Raspberry Pi) layout before building.
+        self._compact = self._resolve_compact(settings)
+        self._cov_font_px = 22 if self._compact else 30
+        set_shadows_enabled(self._resolve_shadows(settings))
+
         self.setWindowTitle(tr("win_title"))
-        self.resize(1440, 900)
+        self._apply_window_geometry()
         self.setStyleSheet(app_stylesheet())
 
         self._build_ui()
@@ -86,6 +92,57 @@ class MainWindow(QMainWindow):
         self._svc.refresh_devices()
         if settings.auto_connect_first:
             self._auto_connect_first()
+
+    # ══════════════════════════════════════════════════════════
+    # responsive / Raspberry Pi layout
+    # ══════════════════════════════════════════════════════════
+
+    def _screen_size(self):
+        """Available screen geometry, or None if it can't be determined."""
+        try:
+            screen = QApplication.primaryScreen()
+            if screen is not None:
+                g = screen.availableGeometry()
+                return g.width(), g.height()
+        except Exception:
+            pass
+        return None
+
+    def _resolve_compact(self, settings: Settings) -> bool:
+        """Compact layout when forced by config, or auto-detected on a small
+        screen (e.g. the official 7" Raspberry Pi touchscreen, 800×480)."""
+        mode = settings.compact
+        if mode == "on":
+            return True
+        if mode == "off":
+            return False
+        size = self._screen_size()
+        if size is None:
+            return False
+        w, h = size
+        return w <= 1024 or h <= 600
+
+    def _resolve_shadows(self, settings: Settings) -> bool:
+        mode = settings.card_shadows
+        if mode == "on":
+            return True
+        if mode == "off":
+            return False
+        # auto: shadows off whenever we're in the compact/low-power layout.
+        return not self._compact
+
+    def _apply_window_geometry(self) -> None:
+        if self._compact:
+            size = self._screen_size()
+            if size is not None:
+                w, h = size
+                self.resize(min(1024, w), min(600, h))
+            else:
+                self.resize(1024, 600)
+            self.setMinimumSize(720, 440)
+        else:
+            self.resize(1440, 900)
+            self.setMinimumSize(960, 600)
 
     # ══════════════════════════════════════════════════════════
     # UI construction
@@ -109,7 +166,7 @@ class MainWindow(QMainWindow):
         self._splitter.addWidget(self._build_center())
         self._splitter.setStretchFactor(0, 0)   # sidebar keeps its size
         self._splitter.setStretchFactor(1, 1)    # center absorbs extra space
-        self._splitter.setSizes([340, 1100])
+        self._splitter.setSizes([240, 780] if self._compact else [340, 1100])
         outer.addWidget(self._splitter)
 
     # ── sidebar ───────────────────────────────────────────────
@@ -117,8 +174,8 @@ class MainWindow(QMainWindow):
     def _build_sidebar(self) -> QWidget:
         wrap = QWidget(); wrap.setObjectName("Sidebar")
         # Min/max (instead of a fixed width) so the splitter handle can drag it.
-        wrap.setMinimumWidth(280)
-        wrap.setMaximumWidth(560)
+        wrap.setMinimumWidth(210 if self._compact else 280)
+        wrap.setMaximumWidth(480 if self._compact else 560)
         wl = QVBoxLayout(wrap); wl.setContentsMargins(0, 0, 0, 0); wl.setSpacing(0)
 
         # brand header
@@ -134,7 +191,10 @@ class MainWindow(QMainWindow):
         scroll = QScrollArea(); scroll.setWidgetResizable(True)
         inner = QWidget()
         col = QVBoxLayout(inner)
-        col.setContentsMargins(14, 6, 14, 16); col.setSpacing(12)
+        if self._compact:
+            col.setContentsMargins(10, 4, 10, 10); col.setSpacing(8)
+        else:
+            col.setContentsMargins(14, 6, 14, 16); col.setSpacing(12)
 
         col.addWidget(self._card_hardware())
         col.addWidget(self._card_camera_control())
@@ -310,12 +370,18 @@ class MainWindow(QMainWindow):
 
     def _build_center(self) -> QWidget:
         wrap = QWidget()
-        cl = QVBoxLayout(wrap); cl.setContentsMargins(16, 14, 16, 16); cl.setSpacing(12)
+        cl = QVBoxLayout(wrap)
+        if self._compact:
+            cl.setContentsMargins(8, 8, 8, 8); cl.setSpacing(8)
+        else:
+            cl.setContentsMargins(16, 14, 16, 16); cl.setSpacing(12)
 
         cl.addLayout(self._build_topbar())
         cl.addLayout(self._build_view_header())
 
-        self._video = VideoWidget()
+        min_size = (320, 240) if self._compact else (480, 360)
+        self._video = VideoWidget(
+            min_size=min_size, display_fps_cap=self._settings.display_fps_cap)
         self._video.set_show_pip(self._settings.show_difference_pip)
         self._video.double_clicked.connect(self._open_fullscreen)
         self._chart = ChartWidget()
@@ -328,9 +394,12 @@ class MainWindow(QMainWindow):
         return wrap
 
     def _build_topbar(self) -> QHBoxLayout:
-        bar = QHBoxLayout(); bar.setSpacing(8)
-        self._combo = QComboBox(); self._combo.setMinimumWidth(300); self._combo.setMinimumHeight(36)
-        bar.addWidget(self._combo)
+        ctrl_h = 32 if self._compact else 36
+        combo_w = 150 if self._compact else 300
+        bar = QHBoxLayout(); bar.setSpacing(6 if self._compact else 8)
+        self._combo = QComboBox(); self._combo.setMinimumWidth(combo_w); self._combo.setMinimumHeight(ctrl_h)
+        self._combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        bar.addWidget(self._combo, 1)
         self._btn_refresh = QPushButton(label("🔍", tr("refresh"))); self._btn_refresh.setStyleSheet(btn_ghost())
         self._btn_connect = QPushButton(tr("connect")); self._btn_connect.setStyleSheet(btn_primary())
         self._btn_startstop = QPushButton(label("▶", tr("start"))); self._btn_startstop.setStyleSheet(btn_success())
@@ -338,7 +407,7 @@ class MainWindow(QMainWindow):
         self._btn_snapshot = QPushButton(label("💾", tr("snapshot"))); self._btn_snapshot.setStyleSheet(btn_ghost())
         for b in (self._btn_refresh, self._btn_connect, self._btn_startstop,
                   self._btn_trigger, self._btn_snapshot):
-            b.setMinimumHeight(36); bar.addWidget(b)
+            b.setMinimumHeight(ctrl_h); bar.addWidget(b)
         self._btn_refresh.clicked.connect(self._svc.refresh_devices)
         self._btn_connect.clicked.connect(self._on_connect_toggle)
         self._btn_startstop.clicked.connect(self._on_startstop)
@@ -346,11 +415,11 @@ class MainWindow(QMainWindow):
         self._btn_snapshot.clicked.connect(self._on_snapshot)
         bar.addStretch()
         self._status_pill = QLabel(tr("status_disconnected"))
-        self._status_pill.setMinimumHeight(36)
+        self._status_pill.setMinimumHeight(ctrl_h)
         self._set_status_pill(CameraState.DISCONNECTED)
         bar.addWidget(self._status_pill)
         self._btn_lang = QPushButton(label("🌐", tr("lang_btn"))); self._btn_lang.setStyleSheet(btn_ghost())
-        self._btn_lang.setMinimumHeight(36); self._btn_lang.clicked.connect(self._toggle_language)
+        self._btn_lang.setMinimumHeight(ctrl_h); self._btn_lang.clicked.connect(self._toggle_language)
         bar.addWidget(self._btn_lang)
         return bar
 
@@ -411,7 +480,7 @@ class MainWindow(QMainWindow):
         # coverage read-out
         self._bg_dot = QLabel("●"); self._bg_dot.setStyleSheet(f"color:{C.TEXT_FAINT};font-size:14px;")
         self._cov_val = QLabel("–")
-        self._cov_val.setStyleSheet(f"color:{C.SUCCESS};font-size:30px;font-weight:800;")
+        self._cov_val.setStyleSheet(f"color:{C.SUCCESS};font-size:{self._cov_font_px}px;font-weight:800;")
         self._cov_cap = key_label(tr("coverage_pct"))
         cvcol = QVBoxLayout(); cvcol.setSpacing(0)
         caprow = QHBoxLayout(); caprow.setSpacing(6); caprow.addWidget(self._bg_dot); caprow.addWidget(self._cov_cap); caprow.addStretch()
@@ -484,7 +553,7 @@ class MainWindow(QMainWindow):
         self._bg_dot.setStyleSheet(f"color:{C.TEXT_FAINT};font-size:14px;")
         self._cov_cap.setText(tr("coverage_pct"))
         self._cov_val.setText("–")
-        self._cov_val.setStyleSheet(f"color:{C.SUCCESS};font-size:30px;font-weight:800;")
+        self._cov_val.setStyleSheet(f"color:{C.SUCCESS};font-size:{self._cov_font_px}px;font-weight:800;")
         self._video.set_alert(False)
         self._alert_badge.setText("")
         self._alert_badge.setStyleSheet("")
@@ -557,7 +626,7 @@ class MainWindow(QMainWindow):
         self._cov_cap.setText(tr("coverage_pct"))
         self._cov_val.setText(f"{cov.coverage_percent:.1f}%")
         col = C.DANGER if cov.alert_active else C.SUCCESS
-        self._cov_val.setStyleSheet(f"color:{col};font-size:30px;font-weight:800;")
+        self._cov_val.setStyleSheet(f"color:{col};font-size:{self._cov_font_px}px;font-weight:800;")
         self._video.set_alert(cov.alert_active)
         if cov.alert_active:
             self._alert_badge.setText(tr("alert_label"))

@@ -206,6 +206,23 @@ def btn_toggle() -> str:
 
 # ── card container ────────────────────────────────────────────
 
+# Drop shadows use a QGraphicsDropShadowEffect, which forces the whole card
+# through a software raster pipeline on every repaint.  That is fine on a
+# desktop GPU but expensive on the Raspberry Pi's composited display, so the
+# effect can be switched off globally (see set_shadows_enabled).
+_SHADOWS_ENABLED = True
+
+
+def set_shadows_enabled(enabled: bool) -> None:
+    """Enable/disable card drop shadows for all cards built afterwards."""
+    global _SHADOWS_ENABLED
+    _SHADOWS_ENABLED = bool(enabled)
+
+
+def shadows_enabled() -> bool:
+    return _SHADOWS_ENABLED
+
+
 class Card(QFrame):
     """A titled surface card with a subtle border and soft shadow."""
 
@@ -215,12 +232,13 @@ class Card(QFrame):
         self.setStyleSheet(
             f"#Card {{ background: {C.SURFACE}; border: 1px solid {C.BORDER};"
             f" border-radius: 12px; }}")
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(18)
-        shadow.setXOffset(0)
-        shadow.setYOffset(3)
-        shadow.setColor(QColor(0, 0, 0, 90))
-        self.setGraphicsEffect(shadow)
+        if _SHADOWS_ENABLED:
+            shadow = QGraphicsDropShadowEffect(self)
+            shadow.setBlurRadius(18)
+            shadow.setXOffset(0)
+            shadow.setYOffset(3)
+            shadow.setColor(QColor(0, 0, 0, 90))
+            self.setGraphicsEffect(shadow)
 
         self._lay = QVBoxLayout(self)
         self._lay.setContentsMargins(14, 12, 14, 14)

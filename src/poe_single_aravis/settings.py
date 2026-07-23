@@ -46,6 +46,17 @@ _DEFAULTS: dict[str, Any] = {
     "ui": {
         "language": "zh",
         "show_difference_pip": True,
+        # ── Raspberry Pi / small-screen tuning ────────────────────
+        # compact:         "auto" (detect small screen), True (force), False (off)
+        # display_fps_cap: cap UI repaint rate; 0 = uncapped. Decouples the
+        #                  expensive Qt render from the acquisition rate so a
+        #                  low-power Pi GPU is not swamped.
+        # card_shadows:    per-card drop shadows; "auto" disables them in
+        #                  compact mode (soft shadows are costly on the Pi's
+        #                  software-composited display).
+        "compact": "auto",
+        "display_fps_cap": 30,
+        "card_shadows": "auto",
     },
 }
 
@@ -210,3 +221,27 @@ class Settings:
     @property
     def show_difference_pip(self) -> bool:
         return bool(self._cfg["ui"]["show_difference_pip"])
+
+    @property
+    def compact(self) -> str:
+        """'auto' | 'on' | 'off' — normalised from the raw config value."""
+        v = self._cfg["ui"].get("compact", "auto")
+        if isinstance(v, bool):
+            return "on" if v else "off"
+        return str(v).lower() if str(v).lower() in ("auto", "on", "off") else "auto"
+
+    @property
+    def display_fps_cap(self) -> int:
+        try:
+            cap = int(self._cfg["ui"].get("display_fps_cap", 30))
+        except (TypeError, ValueError):
+            return 30
+        return cap if cap >= 0 else 0
+
+    @property
+    def card_shadows(self) -> str:
+        """'auto' | 'on' | 'off' — whether cards draw a drop shadow."""
+        v = self._cfg["ui"].get("card_shadows", "auto")
+        if isinstance(v, bool):
+            return "on" if v else "off"
+        return str(v).lower() if str(v).lower() in ("auto", "on", "off") else "auto"

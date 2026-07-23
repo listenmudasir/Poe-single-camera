@@ -12,7 +12,7 @@ place makes the "modernized redesign" consistent and easy to tweak.
 from __future__ import annotations
 
 from PyQt5.QtWidgets import QFrame, QLabel, QVBoxLayout, QGraphicsDropShadowEffect
-from PyQt5.QtGui import QColor
+from PyQt5.QtGui import QColor, QFontDatabase
 from PyQt5.QtCore import Qt
 
 
@@ -37,15 +37,67 @@ class C:
     VIOLET      = "#a78bfa"
 
 
+# ── glyph / emoji handling ────────────────────────────────────
+#
+# The UI decorates cards and buttons with emoji (🖥 📷 ⚙ …).  On a system
+# without a colour-emoji font installed, PyQt renders every one of those as an
+# empty "tofu" box (□), which is the "UI 顯示成口" problem.  We detect once
+# whether the platform can actually draw emoji and, if not, drop the glyph so
+# labels stay clean text instead of rows of boxes.
+
+_EMOJI_FONTS = (
+    "Noto Color Emoji", "Noto Emoji", "Segoe UI Emoji", "Segoe UI Symbol",
+    "Apple Color Emoji", "Twitter Color Emoji", "EmojiOne Color",
+    "JoyPixels", "Android Emoji",
+)
+
+_EMOJI_OK: bool | None = None
+
+
+def emoji_supported() -> bool:
+    """True when at least one emoji-capable font is available.
+
+    Cached after the first call.  Requires a live QApplication (safe to call
+    during UI construction)."""
+    global _EMOJI_OK
+    if _EMOJI_OK is None:
+        try:
+            families = set(QFontDatabase().families())
+            _EMOJI_OK = any(f in families for f in _EMOJI_FONTS)
+        except Exception:
+            _EMOJI_OK = False
+    return _EMOJI_OK
+
+
+def icon(glyph: str) -> str:
+    """Return ``glyph`` only if the platform can render it, else ``""``.
+
+    Use for every decorative emoji so systems without an emoji font show plain
+    text rather than tofu boxes (□)."""
+    return glyph if emoji_supported() else ""
+
+
+def label(glyph: str, text: str) -> str:
+    """Combine a decorative ``glyph`` with ``text``.
+
+    Drops the glyph (and its trailing space) when emoji are unsupported."""
+    g = icon(glyph)
+    return f"{g} {text}".strip() if g else text
+
+
 def app_stylesheet() -> str:
     """Global application stylesheet."""
     return f"""
     QWidget {{
         background: transparent;
         color: {C.TEXT};
-        font-family: "Noto Sans CJK TC","Microsoft JhengHei","Segoe UI",sans-serif;
+        font-family: "Noto Sans CJK TC","Microsoft JhengHei","Segoe UI",
+            "Noto Color Emoji","Segoe UI Emoji","Apple Color Emoji",sans-serif;
         font-size: 13px;
     }}
+    QSplitter#MainSplitter::handle {{ background: {C.BORDER}; }}
+    QSplitter#MainSplitter::handle:hover {{ background: {C.ACCENT}; }}
+    QSplitter#MainSplitter::handle:pressed {{ background: {C.ACCENT_2}; }}
     QMainWindow, #RootBg {{ background: {C.BG}; }}
     #Sidebar {{ background: {C.BG_ELEV}; border-right: 1px solid {C.BORDER}; }}
 

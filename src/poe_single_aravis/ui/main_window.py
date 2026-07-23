@@ -25,6 +25,7 @@ from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout,
     QComboBox, QPushButton, QLabel, QStackedWidget, QScrollArea, QDoubleSpinBox,
     QSpinBox, QSlider, QRadioButton, QButtonGroup, QProgressBar, QSizePolicy,
+    QSplitter,
 )
 
 from ..settings import Settings
@@ -35,7 +36,7 @@ from ..imaging.white_balance import WhiteBalanceController
 from .i18n import tr, set_language, get_language
 from .theme import (
     C, app_stylesheet, btn_primary, btn_ghost, btn_success, btn_danger,
-    btn_toggle, Card, hline, key_label, value_label,
+    btn_toggle, Card, hline, key_label, value_label, icon, label,
 )
 from .video_widget import VideoWidget
 from .chart_widget import ChartWidget
@@ -97,14 +98,27 @@ class MainWindow(QMainWindow):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        outer.addWidget(self._build_sidebar())
-        outer.addWidget(self._build_center(), 1)
+        # A draggable splitter between the sidebar and the video/center pane so
+        # the user can resize the left panel instead of the layout "跑版"
+        # (breaking) when the window is resized.
+        self._splitter = QSplitter(Qt.Horizontal)
+        self._splitter.setObjectName("MainSplitter")
+        self._splitter.setHandleWidth(6)
+        self._splitter.setChildrenCollapsible(False)
+        self._splitter.addWidget(self._build_sidebar())
+        self._splitter.addWidget(self._build_center())
+        self._splitter.setStretchFactor(0, 0)   # sidebar keeps its size
+        self._splitter.setStretchFactor(1, 1)    # center absorbs extra space
+        self._splitter.setSizes([340, 1100])
+        outer.addWidget(self._splitter)
 
     # ── sidebar ───────────────────────────────────────────────
 
     def _build_sidebar(self) -> QWidget:
         wrap = QWidget(); wrap.setObjectName("Sidebar")
-        wrap.setFixedWidth(340)
+        # Min/max (instead of a fixed width) so the splitter handle can drag it.
+        wrap.setMinimumWidth(280)
+        wrap.setMaximumWidth(560)
         wl = QVBoxLayout(wrap); wl.setContentsMargins(0, 0, 0, 0); wl.setSpacing(0)
 
         # brand header
@@ -135,7 +149,7 @@ class MainWindow(QMainWindow):
         return wrap
 
     def _card_hardware(self) -> Card:
-        card = Card(tr("hw_monitor"), "🖥")
+        card = Card(tr("hw_monitor"), icon("🖥"))
         self._hw_card = card
         grid = QGridLayout(); grid.setHorizontalSpacing(10); grid.setVerticalSpacing(8)
         self._cpu_bar = self._meter(); self._ram_bar = self._meter()
@@ -162,7 +176,7 @@ class MainWindow(QMainWindow):
         return bar
 
     def _card_camera_control(self) -> Card:
-        card = Card(tr("cam_control"), "📷")
+        card = Card(tr("cam_control"), icon("📷"))
         self._ctrl_card = card
         self._mode_lbl = key_label(tr("compute_mode"))
         card.add(self._mode_lbl)
@@ -178,7 +192,7 @@ class MainWindow(QMainWindow):
         return card
 
     def _card_params(self) -> Card:
-        card = Card(tr("cam_params"), "⚙")
+        card = Card(tr("cam_params"), icon("⚙"))
         self._params_card = card
         form = QFormLayout()
         form.setLabelAlignment(Qt.AlignLeft); form.setHorizontalSpacing(10); form.setVerticalSpacing(9)
@@ -215,8 +229,8 @@ class MainWindow(QMainWindow):
         card.add_layout(trow)
 
         brow = QHBoxLayout()
-        self._btn_get = QPushButton("📥 " + tr("get_param")); self._btn_get.setStyleSheet(btn_ghost())
-        self._btn_set = QPushButton("📤 " + tr("set_param")); self._btn_set.setStyleSheet(btn_primary())
+        self._btn_get = QPushButton(label("📥", tr("get_param"))); self._btn_get.setStyleSheet(btn_ghost())
+        self._btn_set = QPushButton(label("📤", tr("set_param"))); self._btn_set.setStyleSheet(btn_primary())
         self._btn_get.clicked.connect(self._on_get_params)
         self._btn_set.clicked.connect(self._on_set_params)
         brow.addWidget(self._btn_get); brow.addWidget(self._btn_set)
@@ -228,7 +242,7 @@ class MainWindow(QMainWindow):
         return card
 
     def _card_roi(self) -> Card:
-        card = Card(tr("roi"), "🔲")
+        card = Card(tr("roi"), icon("🔲"))
         self._roi_card = card
         grid = QGridLayout(); grid.setHorizontalSpacing(8); grid.setVerticalSpacing(8)
         self._roi_x = QSpinBox(); self._roi_y = QSpinBox()
@@ -252,7 +266,7 @@ class MainWindow(QMainWindow):
         return card
 
     def _card_white_balance(self) -> Card:
-        card = Card(tr("white_balance"), "⚖")
+        card = Card(tr("white_balance"), icon("⚖"))
         self._wb_card = card
         self._btn_wb_hw = QPushButton(tr("wb_auto_hw")); self._btn_wb_hw.setStyleSheet(btn_ghost())
         self._btn_wb_hw.clicked.connect(self._svc.hardware_auto_white_balance)
@@ -269,7 +283,7 @@ class MainWindow(QMainWindow):
         return card
 
     def _card_analysis(self) -> Card:
-        card = Card(tr("analysis"), "📊")
+        card = Card(tr("analysis"), icon("📊"))
         self._analysis_card = card
         grid = QGridLayout(); grid.setHorizontalSpacing(10); grid.setVerticalSpacing(7)
         self._an = {}
@@ -317,11 +331,11 @@ class MainWindow(QMainWindow):
         bar = QHBoxLayout(); bar.setSpacing(8)
         self._combo = QComboBox(); self._combo.setMinimumWidth(300); self._combo.setMinimumHeight(36)
         bar.addWidget(self._combo)
-        self._btn_refresh = QPushButton("🔍 " + tr("refresh")); self._btn_refresh.setStyleSheet(btn_ghost())
+        self._btn_refresh = QPushButton(label("🔍", tr("refresh"))); self._btn_refresh.setStyleSheet(btn_ghost())
         self._btn_connect = QPushButton(tr("connect")); self._btn_connect.setStyleSheet(btn_primary())
-        self._btn_startstop = QPushButton("▶ " + tr("start")); self._btn_startstop.setStyleSheet(btn_success())
-        self._btn_trigger = QPushButton("📸 " + tr("trigger_once")); self._btn_trigger.setStyleSheet(btn_ghost())
-        self._btn_snapshot = QPushButton("💾 " + tr("snapshot")); self._btn_snapshot.setStyleSheet(btn_ghost())
+        self._btn_startstop = QPushButton(label("▶", tr("start"))); self._btn_startstop.setStyleSheet(btn_success())
+        self._btn_trigger = QPushButton(label("📸", tr("trigger_once"))); self._btn_trigger.setStyleSheet(btn_ghost())
+        self._btn_snapshot = QPushButton(label("💾", tr("snapshot"))); self._btn_snapshot.setStyleSheet(btn_ghost())
         for b in (self._btn_refresh, self._btn_connect, self._btn_startstop,
                   self._btn_trigger, self._btn_snapshot):
             b.setMinimumHeight(36); bar.addWidget(b)
@@ -335,15 +349,15 @@ class MainWindow(QMainWindow):
         self._status_pill.setMinimumHeight(36)
         self._set_status_pill(CameraState.DISCONNECTED)
         bar.addWidget(self._status_pill)
-        self._btn_lang = QPushButton("🌐 " + tr("lang_btn")); self._btn_lang.setStyleSheet(btn_ghost())
+        self._btn_lang = QPushButton(label("🌐", tr("lang_btn"))); self._btn_lang.setStyleSheet(btn_ghost())
         self._btn_lang.setMinimumHeight(36); self._btn_lang.clicked.connect(self._toggle_language)
         bar.addWidget(self._btn_lang)
         return bar
 
     def _build_view_header(self) -> QHBoxLayout:
         bar = QHBoxLayout(); bar.setSpacing(6)
-        self._btn_live = QPushButton("🎥 " + tr("show_live")); self._btn_live.setCheckable(True); self._btn_live.setChecked(True)
-        self._btn_chart = QPushButton("📈 " + tr("show_chart")); self._btn_chart.setCheckable(True)
+        self._btn_live = QPushButton(label("🎥", tr("show_live"))); self._btn_live.setCheckable(True); self._btn_live.setChecked(True)
+        self._btn_chart = QPushButton(label("📈", tr("show_chart"))); self._btn_chart.setCheckable(True)
         seg = QButtonGroup(self); seg.addButton(self._btn_live); seg.addButton(self._btn_chart)
         for b in (self._btn_live, self._btn_chart):
             b.setStyleSheet(btn_toggle()); b.setMinimumHeight(30)
@@ -665,7 +679,7 @@ class MainWindow(QMainWindow):
         self._btn_connect.setText(tr("disconnect") if connected else tr("connect"))
         self._btn_connect.setStyleSheet(btn_danger() if connected else btn_primary())
         self._btn_startstop.setEnabled(state in (CameraState.CONNECTED, CameraState.STREAMING))
-        self._btn_startstop.setText(("■ " + tr("stop")) if streaming else ("▶ " + tr("start")))
+        self._btn_startstop.setText(label("■", tr("stop")) if streaming else label("▶", tr("start")))
         self._btn_startstop.setStyleSheet(btn_danger() if streaming else btn_success())
         self._btn_trigger.setEnabled(streaming and self._rb_soft.isChecked())
         self._btn_snapshot.setEnabled(streaming)
@@ -716,7 +730,7 @@ class MainWindow(QMainWindow):
         self._lbl_exp.setText(tr("exposure")); self._lbl_gain.setText(tr("gain"))
         self._lbl_fr.setText(tr("frame_rate")); self._lbl_pf.setText(tr("pixel_format"))
         self._lbl_trig.setText(tr("trigger_mode")); self._rb_cont.setText(tr("continuous")); self._rb_soft.setText(tr("software_trigger"))
-        self._btn_get.setText("📥 " + tr("get_param")); self._btn_set.setText("📤 " + tr("set_param"))
+        self._btn_get.setText(label("📥", tr("get_param"))); self._btn_set.setText(label("📤", tr("set_param")))
         self._roi_card.set_title(tr("roi"))
         self._lbl_rx.setText(tr("roi_x")); self._lbl_ry.setText(tr("roi_y"))
         self._lbl_rw.setText(tr("roi_w")); self._lbl_rh.setText(tr("roi_h"))
@@ -728,10 +742,10 @@ class MainWindow(QMainWindow):
         self._an_key["intensity"].setText(tr("intensity")); self._an_key["brightness"].setText(tr("brightness"))
         self._an_key["resolution"].setText(tr("resolution"))
         self._an_key["fps"].setText(tr("acq_fps") + " / " + tr("proc_fps"))
-        self._btn_refresh.setText("🔍 " + tr("refresh"))
-        self._btn_trigger.setText("📸 " + tr("trigger_once")); self._btn_snapshot.setText("💾 " + tr("snapshot"))
-        self._btn_lang.setText("🌐 " + tr("lang_btn"))
-        self._btn_live.setText("🎥 " + tr("show_live")); self._btn_chart.setText("📈 " + tr("show_chart"))
+        self._btn_refresh.setText(label("🔍", tr("refresh")))
+        self._btn_trigger.setText(label("📸", tr("trigger_once"))); self._btn_snapshot.setText(label("💾", tr("snapshot")))
+        self._btn_lang.setText(label("🌐", tr("lang_btn")))
+        self._btn_live.setText(label("🎥", tr("show_live"))); self._btn_chart.setText(label("📈", tr("show_chart")))
         self._fs_hint.setText(tr("dbl_fullscreen"))
         self._btn_sub.setText(tr("subtraction")); self._btn_cap_bg.setText(tr("capture_bg")); self._btn_reset_bg.setText(tr("reset_bg"))
         self._alert_lbl.setText(tr("alert_threshold"))

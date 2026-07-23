@@ -34,6 +34,10 @@ _DEFAULTS: dict[str, Any] = {
         "gaussian_kernel": 21,
         "morphology_kernel": 5,
         "alert_threshold_percent": 20.0,
+        # Max times per second the RGB/HSL/brightness statistics are recomputed.
+        # Decouples the analysis CPU cost from the acquisition frame rate on the
+        # Raspberry Pi; 0 means "every frame". The video display is unaffected.
+        "analysis_fps": 8,
     },
     "logging": {
         "enabled": True,
@@ -186,6 +190,15 @@ class Settings:
     @property
     def alert_threshold_percent(self) -> float:
         return float(self._cfg["processing"]["alert_threshold_percent"])
+
+    @property
+    def analysis_fps(self) -> float:
+        """Cap on how often image statistics are recomputed; 0 = every frame."""
+        try:
+            v = float(self._cfg["processing"].get("analysis_fps", 8))
+        except (TypeError, ValueError):
+            return 8.0
+        return v if v >= 0 else 0.0
 
     # ── logging ───────────────────────────────────────────────
 

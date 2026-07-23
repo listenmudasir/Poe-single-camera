@@ -66,6 +66,14 @@ class ProcessingService(QThread):
         self._proc_mode = "cpu"
         self._lock      = threading.Lock()
 
+        # Analysis-rate cap: recompute image statistics at most this often
+        # (0 = every frame). Decouples analysis CPU from the frame rate; the
+        # last computed stats are re-emitted on skipped frames so the readouts
+        # still track every displayed frame.
+        self._analysis_min_interval = 0.0
+        self._last_analysis_t = 0.0
+        self._last_stats: Optional[ImageStatistics] = None
+
         # Pending background-capture request (captured from next frame)
         self._capture_bg_pending = False
 
@@ -82,12 +90,20 @@ class ProcessingService(QThread):
         with self._lock:
             self._slot = frame_slot
             self._ss   = stream_stats
+        # Drop cached stats so a new stream never re-emits a previous scene's
+        # readouts before its first frame is analysed.
+        self._last_stats = None
+        self._last_analysis_t = 0.0
 
     def set_logger(self, logger) -> None:
         self._logger = logger
 
     def set_do_analysis(self, v: bool) -> None:
         self._do_analysis = v
+
+    def set_analysis_fps(self, fps: float) -> None:
+        """Cap statistics recomputes to `fps` per second (0 = every frame)."""
+        self._analysis_min_interval = (1.0 / fps) if fps and fps > 0 else 0.0
 
     def set_do_subtraction(self, v: bool) -> None:
         self._do_subtraction = v
@@ -136,7 +152,11 @@ class ProcessingService(QThread):
             if frame is None:
                 continue
 
-            bgr = frame.image.copy()  # processing-side copy
+            # The PixelConverter already hands us application-owned, single-
+            # consumer memory, so no extra copy is needed here. White balance,
+            # when active, returns a fresh array; when inactive we read the
+            # frame buffer without mutating it.
+            bgr = frame.image
 
             # White balance
             if self._wb.r_gain != 1.0 or self._wb.g_gain != 1.0 or self._wb.b_gain != 1.0:
@@ -153,13 +173,22 @@ class ProcessingService(QThread):
             # Resize for display
             display_frame = self._resizer.resize(bgr)
 
-            # Image statistics
+            # Image statistics (rate-capped; re-emit last value in between so
+            # the UI readouts still update on every frame without paying the
+            # analysis cost each time).
             stats: Optional[ImageStatistics] = None
             if self._do_analysis:
-                try:
-                    stats = self._analyzer.analyze(bgr)
-                except Exception as exc:
-                    log.warning("Analysis failed: %s", exc)
+                now_a = time.monotonic()
+                due = (self._analysis_min_interval <= 0.0
+                       or self._last_stats is None
+                       or (now_a - self._last_analysis_t) >= self._analysis_min_interval)
+                if due:
+                    try:
+                        self._last_stats = self._analyzer.analyze(bgr)
+                        self._last_analysis_t = now_a
+                    except Exception as exc:
+                        log.warning("Analysis failed: %s", exc)
+                stats = self._last_stats
 
             # Coverage
             coverage: Optional[CoverageResult] = None

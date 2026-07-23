@@ -295,6 +295,7 @@ processing:
   gaussian_kernel: 21         # blur kernel (odd)
   morphology_kernel: 5        # ellipse kernel for close/open
   alert_threshold_percent: 20.0
+  analysis_fps: 8             # max RGB/HSL/brightness recomputes/sec (0 = every frame)
 
 logging:
   enabled: true
@@ -330,6 +331,13 @@ Two display-performance settings help the Pi's modest GPU/CPU:
 * `card_shadows` turns off the per-card drop shadows (soft shadows are drawn
   in software and are surprisingly expensive on the Pi's composited display).
   `"auto"` disables them whenever the compact layout is active.
+
+The `processing.analysis_fps` setting caps how often the RGB/HSL/brightness
+read-outs are recomputed (default 8/sec). The live video keeps updating every
+frame — only the statistics pass is rate-limited — so lowering it (e.g. `4`)
+frees CPU on a Pi without making the video choppy. Set `0` to analyse every
+frame as before. Coverage/background-subtraction analysis is separate and runs
+only while subtraction is enabled.
 
 The divider between the left panel and the video can be **dragged** to give
 either side more room.

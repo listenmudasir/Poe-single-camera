@@ -16,4 +16,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from poe_single_aravis.app import _bootstrap_aravis  # noqa: E402
 
-_bootstrap_aravis()
+# Aravis is a system dependency and may be absent (e.g. CI, a dev laptop
+# without GenICam installed). The pure-imaging/settings unit tests don't need
+# it, so a missing backend must not abort collection of the whole suite. Tests
+# that genuinely require Aravis import it themselves and will error/skip on
+# their own if it isn't available.
+ARAVIS_AVAILABLE = True
+try:
+    _bootstrap_aravis()
+except Exception:  # pragma: no cover - depends on the host environment
+    ARAVIS_AVAILABLE = False

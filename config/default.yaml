@@ -15,6 +15,7 @@ processing:
   gaussian_kernel: 21
   morphology_kernel: 5
   alert_threshold_percent: 20.0
+  analysis_fps: 8            # max stats recomputes/sec (0 = every frame)
 
 logging:
   enabled: true

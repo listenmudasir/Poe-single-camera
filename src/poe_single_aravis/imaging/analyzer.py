@@ -33,25 +33,32 @@ class ImageAnalyzer:
 
         h, w = frame.shape[:2]
 
-        # ── RGB means (frame is BGR, so flip channel order) ──
-        b = frame[:, :, 0].astype(np.float32)
-        g = frame[:, :, 1].astype(np.float32)
-        r = frame[:, :, 2].astype(np.float32)
-        mean_r = float(r.mean())
-        mean_g = float(g.mean())
-        mean_b = float(b.mean())
-
-        # ── BT.601 luminance ─────────────────────────────────
+        # ── RGB means (frame is BGR) ─────────────────────────
+        # cv2.mean averages each channel in one C call, avoiding the three
+        # full-frame float32 temporaries the old per-channel .astype() path
+        # created — a meaningful CPU saving on the Raspberry Pi.
         if frame.ndim == 3:
-            brightness = float((0.299 * r + 0.587 * g + 0.114 * b).mean())
+            m = cv2.mean(frame)                       # (B, G, R, A)
+            mean_b, mean_g, mean_r = float(m[0]), float(m[1]), float(m[2])
+            # BT.601 luminance of the mean == mean of the per-pixel luminance
+            # (averaging is linear), so no per-pixel luminance pass is needed.
+            brightness = 0.299 * mean_r + 0.587 * mean_g + 0.114 * mean_b
         else:
-            brightness = float(frame.astype(np.float32).mean())
+            gray_mean = float(cv2.mean(frame)[0])
+            mean_r = mean_g = mean_b = gray_mean
+            brightness = gray_mean
 
         # ── HSL via OpenCV HLS (order: H, L, S) ──────────────
-        hls = cv2.cvtColor(frame, cv2.COLOR_BGR2HLS)
-        mean_h = float(hls[:, :, 0].mean())          # 0–180
-        mean_l = float(hls[:, :, 1].mean() / 255.0 * 100.0)   # %
-        mean_s = float(hls[:, :, 2].mean() / 255.0 * 100.0)   # %
+        if frame.ndim == 3:
+            hls = cv2.cvtColor(frame, cv2.COLOR_BGR2HLS)
+            mh, ml, ms, _ = cv2.mean(hls)
+            mean_h = float(mh)                        # 0–180
+            mean_l = float(ml) / 255.0 * 100.0        # %
+            mean_s = float(ms) / 255.0 * 100.0        # %
+        else:
+            mean_h = 0.0
+            mean_l = brightness / 255.0 * 100.0
+            mean_s = 0.0
 
         return ImageStatistics(
             mean_r=mean_r,

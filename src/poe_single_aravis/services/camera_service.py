@@ -99,6 +99,7 @@ class CameraService(QObject):
         )
         self.processing.set_processing_mode(settings.processing_mode)
         self.processing.set_threshold(settings.difference_threshold)
+        self.processing.set_analysis_fps(settings.analysis_fps)
         self.processing.frame_processed.connect(self.frame_ready)
         self.processing.fps_updated.connect(self.fps_updated)
         self.processing.start()

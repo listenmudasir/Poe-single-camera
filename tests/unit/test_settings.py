@@ -50,3 +50,43 @@ def test_valid_overrides_applied(tmp_path):
     assert s.processing_mode == "cuda"
     assert s.difference_threshold == 12
     assert s.language == "en"
+
+
+def test_pi_ui_defaults(tmp_path):
+    s = Settings(str(tmp_path / "missing.yaml"))
+    assert s.compact == "auto"
+    assert s.display_fps_cap == 30
+    assert s.card_shadows == "auto"
+    assert s.analysis_fps == 8.0
+
+
+def test_pi_ui_normalization(tmp_path):
+    cfg = _write(tmp_path, """
+        ui:
+          compact: true
+          display_fps_cap: -5
+          card_shadows: false
+        processing:
+          analysis_fps: bogus
+    """)
+    s = Settings(cfg)
+    assert s.compact == "on"            # bool True → "on"
+    assert s.display_fps_cap == 0       # negative → 0 (uncapped)
+    assert s.card_shadows == "off"      # bool False → "off"
+    assert s.analysis_fps == 8.0        # invalid → default
+
+
+def test_pi_ui_explicit_values(tmp_path):
+    cfg = _write(tmp_path, """
+        ui:
+          compact: "off"
+          display_fps_cap: 15
+          card_shadows: "on"
+        processing:
+          analysis_fps: 4
+    """)
+    s = Settings(cfg)
+    assert s.compact == "off"
+    assert s.display_fps_cap == 15
+    assert s.card_shadows == "on"
+    assert s.analysis_fps == 4.0
